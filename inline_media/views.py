@@ -1,9 +1,9 @@
 #-*- coding: utf-8 -*-
 
+import simplejson
+
 from django.http import HttpResponse
-from django.template import TemplateSyntaxError
-from django.shortcuts import render_to_response
-from django.utils import simplejson
+from django.conf import settings
 
 from sorl.thumbnail import get_thumbnail
 
