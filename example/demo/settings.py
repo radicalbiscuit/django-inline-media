@@ -113,6 +113,7 @@ INSTALLED_APPS = (
     "inline_media",
 
     "demo.articles",
+    # "south",
 )
 
 # A sample logging configuration. The only tangible logging
@@ -123,6 +124,11 @@ INSTALLED_APPS = (
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse'
+        }
+    },
     'formatters': {
         'simple': {
             'format': '%(levelname)s %(asctime)s %(module)s %(message)s'
@@ -131,6 +137,7 @@ LOGGING = {
     'handlers': {
         'mail_admins': {
             'level': 'ERROR',
+            'filters': ['require_debug_false'],
             'class': 'django.utils.log.AdminEmailHandler'
         },
         'console': {
@@ -163,3 +170,21 @@ THUMBNAIL_BACKEND = "inline_media.sorl_backends.AutoFormatBackend"
 THUMBNAIL_FORMAT = "JPEG"
 
 # ADMIN_IMAGES_PATH = "%s/admin/img/admin" % STATIC_URL # Django 1.3
+
+INLINE_MEDIA_TEXTAREA_ATTRS = {
+    'default': { # default widget attributes, can be overriden on
+                 # a per app_label.model basis
+        'style': 'font: 12px monospace'
+    },
+    'articles.article': { # widget attributes for app_label.model
+        'body': { 'rows': 20 } # field 'body'
+    }
+}
+
+INLINE_MEDIA_CUSTOM_SIZES = {
+    'inline_media.picture':    { 'large': 310 },
+    'inline_media.pictureset': { 
+        'small': None,
+        'large': (288, 240),
+    }
+}

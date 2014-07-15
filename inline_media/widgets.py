@@ -1,18 +1,37 @@
 #-*- coding: utf-8 -*-
+from __future__ import unicode_literals
 
-from django.conf import settings
+import copy
+import django
+import six
+
 from django.contrib.admin.widgets import AdminTextareaWidget
 from django.core.urlresolvers import reverse
 from django.forms.util import flatatt
-from django.utils.encoding import force_unicode
+from django.utils.encoding import force_text
 from django.utils.html import conditional_escape
 from django.utils.safestring import mark_safe
 from django.utils.translation import ugettext as _
+from inline_media.conf import settings
 
-from inline_media.models import InlineType
+if django.VERSION <= (1, 5):
+    from django.utils import simplejson as json
+else:
+    import json
 
-# Defaulted to Django 1.4 path
-ADMIN_IMAGES_PATH = getattr(settings, "ADMIN_IMAGES_PATH", "%s/admin/img" % settings.STATIC_URL)
+
+default_sizes = ['mini', 'small', 'medium', 'large', 'full']
+
+def build_imSizes_array():
+    im_sizes = {}
+    for inline_type in settings.INLINE_MEDIA_TYPES:
+        im_type = inline_type.replace('.', '/')
+        im_sizes[im_type] = copy.copy(default_sizes)
+        custom_sizes = settings.INLINE_MEDIA_CUSTOM_SIZES.get(inline_type, {})
+        for k in [k for k, v in six.iteritems(custom_sizes) if not v]:
+            im_sizes[im_type].remove(k)
+    return json.dumps(im_sizes)
+
 
 class BaseInlinesDialogStr(object):
 
@@ -24,75 +43,76 @@ class BaseInlinesDialogStr(object):
         return self._do_the_widget()
 
     def _do_element_select_type(self, attrs=None):
-        widget = u'\
+        widget = '''
+<script>
+//<![CDATA[
+var imSizes = %(imSizes)s;
+function changeInlineClass(name, type) {
+    var opts = '';
+    if(imSizes[type] == undefined) {
+        opts = '<option>----------</option>';
+    } else 
+        for(var i=0; i<imSizes[type].length; i++) {
+            var size = imSizes[type][i];
+            opts += '<option value="inline_'+size+'_left">'+gettext(size+' left')+'</option>';
+            if(imSizes[type][i]=='full') 
+                opts += '<option value="inline_full_center">'+gettext('full center')+'</option>';
+            opts += '<option value="inline_'+size+'_right">'+gettext(size+' right')+'</option>';
+        }
+    var elem = document.getElementById('id_inline_class_for_'+name);  
+    elem.innerHTML = opts;
+}
+//]]>
+</script>''' % {'imSizes': build_imSizes_array()}
+        widget += '\
 <strong>%(_inline_type_)s:</strong>&nbsp;\
-<select id="id_inline_content_type_for_%(name)s" onchange="document.getElementById(\'lookup_id_inline_for_%(name)s\').href = \'../../../\'+this.value+\'/\';" style="margin-left:2px;margin-right:20px;" '
+<select id="id_inline_content_type_for_%(name)s" onchange="changeInlineClass(\'%(name)s\', this.value);document.getElementById(\'lookup_id_inline_for_%(name)s\').href = \'../../../\'+this.value+\'/\';" style="margin-left:2px;margin-right:20px;" '
         if attrs:
-            widget += " ".join([u'%s="%s"' % (key, value) for key, value in attrs.iteritems()])
-        widget += u'><option>----------</option>'
-        for inline in InlineType.objects.all():
-            widget += u'\
+            widget += " ".join(['%s="%s"' % (key, value) for key, value in six.iteritems(attrs)])
+        widget += '><option>----------</option>'
+        for inline_type in getattr(settings, 'INLINE_MEDIA_TYPES', []):
+            chunks = inline_type.split('.')
+            app_label = '.'.join(chunks[:-1])
+            model_name = chunks[-1]
+            widget += '\
   <option value="%(app_label)s/%(model)s">\
     %(app_label_cap)s: %(model_cap)s\
-  </option>' % { "app_label":     inline.content_type.app_label,
-                 "model":         inline.content_type.model, 
-                 "app_label_cap": inline.content_type.app_label.capitalize(), 
-                 "model_cap":     inline.content_type.model.capitalize() }
-        widget += u'</select>'
+  </option>' % { "app_label":     app_label,
+                 "model":         model_name, 
+                 "app_label_cap": app_label.capitalize(), 
+                 "model_cap":     model_name.capitalize() }
+        widget += '</select>'
         return widget % {"_inline_type_": _("Inline type"), 
                          "name": self.name}
 
     def _do_element_input_object(self, attrs=None):
-        widget = u'<strong>Object:</strong>&nbsp;\
+        widget = '<strong>Object:</strong>&nbsp;\
 <input type="text" class="vIntegerField" id="id_inline_for_%(name)s" size="10" '
         if attrs:
-            widget += " ".join([u'%s="%s"' % (key, value) for key, value in attrs.iteritems()])
-        widget += u'/><a id="lookup_id_inline_for_%(name)s" href="#" class="related-lookup" onclick="if(document.getElementById(\'id_inline_content_type_for_%(name)s\').value != \'----------\') { return showRelatedObjectLookupPopup(this); }" style="margin-right:20px;">'
-        widget += u'<img src="%(path)s/selector-search.gif" width="16" height="16" alt="Loopup" /></a>'
-        return widget % {"name": self.name,  "path": ADMIN_IMAGES_PATH}
+            widget += " ".join(['%s="%s"' % (key, value) for key, value in six.iteritems(attrs)])
+        widget += '/><a id="lookup_id_inline_for_%(name)s" href="#" class="related-lookup" onclick="if(document.getElementById(\'id_inline_content_type_for_%(name)s\').value != \'----------\') { return showRelatedObjectLookupPopup(this); }" style="margin-right:20px;">'
+        widget += '<img src="%(path)s/selector-search.gif" width="16" height="16" alt="Loopup" /></a>'
+        return widget % {"name": self.name,  "path": settings.ADMIN_IMAGES_PATH}
         
     def _do_element_select_class(self, attrs=None):
-        widget = u'<strong>Class:</strong>&nbsp;<select id="id_inline_class_for_%(name)s" '
+        widget = '<strong>Class:</strong>&nbsp;<select id="id_inline_class_for_%(name)s" '
         if attrs:
-            widget += " ".join(['%s="%s"' % (key, value) for key, value in attrs.iteritems()])
-        widget += u'<\
-  <option value="inline_mini_left">%(_mini_left_)s</option>\
-  <option value="inline_mini_right">%(_mini_right_)s</option>\
-  <option value="inline_small_left">%(_small_left_)s</option>\
-  <option value="inline_small_right">%(_small_right_)s</option>\
-  <option value="inline_medium_left">%(_medium_left_)s</option>\
-  <option value="inline_medium_right">%(_medium_right_)s</option>\
-  <option value="inline_large_left">%(_large_left_)s</option>\
-  <option value="inline_large_right">%(_large_right_)s</option>\
-  <option value="inline_full_left">%(_full_left_)s</option>\
-  <option value="inline_full_right">%(_full_right_)s</option>\
-  <option value="inline_full">%(_full_centered_)s</option>\
-</select>'
-        return widget % {'name': self.name, 
-                         '_mini_left_': _("Mini left"), 
-                         '_mini_right_': _("Mini right"),
-                         '_small_left_': _("Small left"),
-                         '_small_right_': _("Small right"),
-                         '_medium_left_': _("Medium left"), 
-                         '_medium_right_': _("Medium right"),
-                         '_large_left_': _("Large left"), 
-                         '_large_right_': _("Large right"),
-                         '_full_left_': _("Full left"), 
-                         '_full_right_': _("Full right"),
-                         '_full_centered_': _("Full centered")}
+            widget += " ".join(['%s="%s"' % (key, value) for key, value in six.iteritems(attrs)])
+        widget += '><option>----------</option></select>'
+        return widget % {'name': self.name} 
     
     def _do_element_button_add(self, attrs=None):
-        widget = u'<input type="button" value="%(_add_)s" style="margin-left:10px;" '
+        widget = '<input type="button" value="%(_add_)s" style="margin-left:10px;" '
         if attrs:
-            widget += " ".join([u'%s="%s"' % (key, value) for key, value in attrs.iteritems()])
-        widget += u'/>'
+            widget += " ".join(['%s="%s"' % (key, value) for key, value in six.iteritems(attrs)])
+        widget += '/>'
         return widget % { '_add_': _("Add"), 'name': self.name }
 
     def _do_element_button_cancel(self, attrs=None):
-        widget = u'<input type="button" value="%(_cancel_)s" style="margin-left:5px" '
+        widget = '<input type="button" value="%(_cancel_)s" style="margin-left:5px" '
         if attrs:
-            widget += " ".join([u'%s="%s"' % (key, value) for key, value in attrs.iteritems()])
-        widget += u'/>'
+            widget += " ".join(['%s="%s"' % (key, value) for key, value in six.iteritems(attrs)])
+        widget += '/>'
         return widget % { "_cancel_": _("Cancel") }
 
     def _do_the_widget(self):
@@ -107,7 +127,7 @@ class BaseInlinesDialogStr(object):
 
 class InlinesDialogStr(BaseInlinesDialogStr):
     def _do_element_button_add(self, attrs=None):
-        attrs = {"onclick": u"return insertInline(document.getElementById(\'id_inline_content_type_for_%(name)s\').value, document.getElementById(\'id_inline_for_%(name)s\').value, document.getElementById(\'id_inline_class_for_%(name)s\').value, \'%(name)s\')"}
+        attrs = {"onclick": "return insertInline(document.getElementById(\'id_inline_content_type_for_%(name)s\').value, document.getElementById(\'id_inline_for_%(name)s\').value, document.getElementById(\'id_inline_class_for_%(name)s\').value, \'%(name)s\')"}
         return super(InlinesDialogStr, self)._do_element_button_add(attrs)
 
     def _do_element_button_cancel(self, attrs=None):
@@ -116,20 +136,20 @@ class InlinesDialogStr(BaseInlinesDialogStr):
 
 class Wysihtml5InlinesDialogStr(BaseInlinesDialogStr):
     def _do_element_select_type(self, attrs=None):
-        widget = u'<input type="hidden" data-wysihtml5-dialog-field="rurl" value="%(rurl)s" />'
+        widget = '<input type="hidden" data-wysihtml5-dialog-field="rurl" value="%(rurl)s" />'
         rurl = reverse('inline-media-render-inline', 
                        kwargs={"size": 80, "align": "left", "oid": 0})
         rurl = rurl[:rurl.index("render-image")+len("render-image")]
         return widget % {"rurl":rurl}
 
     def _do_element_input_object(self, attrs=None):
-        widget = u'<strong>%(_image_)s:</strong>&nbsp;\
+        widget = '<strong>%(_image_)s:</strong>&nbsp;\
 <input type="text" class="vIntegerField" id="id_inline_for_%(name)s" size="10" data-wysihtml5-dialog-field="oid" style="width:50px"/><a id="lookup_id_inline_for_%(name)s" href="/admin/inline_media/picture/" class="related-lookup" onclick="return showRelatedObjectLookupPopup(this)" style="margin-right:20px;">'
-        widget += u'<img src="%(path)s/selector-search.gif" width="16" height="16" alt="Loopup" /></a>'
-        return widget % {"_image_": _("Image"), "name": self.name,  "path": ADMIN_IMAGES_PATH}
+        widget += '<img src="%(path)s/selector-search.gif" width="16" height="16" alt="Loopup" /></a>'
+        return widget % {"_image_": _("Image"), "name": self.name,  "path": settings.ADMIN_IMAGES_PATH}
 
     def _do_element_select_class(self, attrs=None):
-        size_widget = u'\
+        size_widget = '\
 <strong>%(_size_)s:</strong>&nbsp;\
 <select id="id_inline_size_for_%(name)s" data-wysihtml5-dialog-field="size">\
   <option value="80">80</option>\
@@ -139,7 +159,7 @@ class Wysihtml5InlinesDialogStr(BaseInlinesDialogStr):
   <option value="350">350</option>\
 </select>' 
         size_widget = size_widget % {'_size_': _("Size"), 'name': self.name}
-        align_widget = u'&nbsp;&nbsp;\
+        align_widget = '&nbsp;&nbsp;\
 <strong>%(_align_)s:</strong>&nbsp;\
 <select id="id_inline_align_for_%(name)s" data-wysihtml5-dialog-field="align">\
   <option value="left">%(_left_)s</option>\
@@ -164,33 +184,30 @@ class TextareaWithInlines(AdminTextareaWidget):
 
     class Media:
         css = {
-            'all': (settings.STATIC_URL + "inline_media/css/inline_media.css",)
+            'all': ("inline_media/css/inline_media.css",)
         }
-        js = (settings.STATIC_URL + "admin/inline_media/js/inlines.js",)
-
-    def __init__(self, attrs=None):
-        super(TextareaWithInlines, self).__init__(attrs=attrs)        
+        js = ("admin/inline_media/js/inlines.js",)
 
     def render(self, name, value, attrs=None):
         if value is None: value = ''
         final_attrs = self.build_attrs(attrs, name=name)
-        textarea_widget = u'<textarea%s>%s</textarea>' % (
+        textarea_widget = '<textarea%s>%s</textarea>' % (
             flatatt(final_attrs),
-            conditional_escape(force_unicode(value)))
+            conditional_escape(force_text(value)))
 
         inlinesWidget = InlinesDialogStr(final_attrs.get("id", "id_%s" % name))
-        inlines_widget = u'<div style="margin-top:10px">'
-        inlines_widget += '<label>'+_("Inlines")+u':</label>'
+        inlines_widget = '<div style="margin-top:10px">'
+        inlines_widget += '<label>'+_("Inlines")+':</label>'
         inlines_widget += inlinesWidget.widget_string()
-        inlines_widget += u'<p class="help">'+_("Insert inlines into your body by choosing an inline type, then an object, then a class.")+u'</p>'
-        inlines_widget += u'</div>'
+        inlines_widget += '<p class="help">'+_("Insert inlines into your body by choosing an inline type, then an object, then a class.")+'</p>'
+        inlines_widget += '</div>'
 
         return mark_safe(textarea_widget + inlines_widget)
 
 
 def render_insert_inline_picture_dialog(id):
-    inlines_widget = u'<div data-wysihtml5-dialog="insertInlinePicture" style="display:none">'
+    inlines_widget = '<div data-wysihtml5-dialog="insertInlinePicture" style="display:none">'
     inlines_widget += Wysihtml5InlinesDialogStr(id).widget_string()
-    inlines_widget += u'</div>'
-    inlines_widget += u'<script type="text/javascript" src="%(static_url)sadmin/inline_media/js/wysihtml5/insertInlineMedia.js"></script>' % {"static_url": settings.STATIC_URL}
+    inlines_widget += '</div>'
+    inlines_widget += '<script type="text/javascript" src="admin/inline_media/js/wysihtml5/insertInlineMedia.js"></script>'
     return inlines_widget

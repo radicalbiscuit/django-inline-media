@@ -1,15 +1,21 @@
+import sys
 from setuptools import setup, find_packages
 from setuptools.command.test import test
 
 def run_tests(*args):
-    from inline_media.tests import run_tests
-    run_tests()
+    from inline_media.tests import run_tests, delete_tmp_dirs
+    errors = run_tests()
+    delete_tmp_dirs()
+    if errors:
+        sys.exit(1)
+    else:
+        sys.exit(0)
 
 test.run_tests = run_tests
 
 setup(
     name = "django-inline-media",
-    version = "1.1a1",
+    version = "1.2",
     packages = find_packages(),
     license = "MIT",
     description = "Simple Django app that allows insertion of inline media objects in text fields, with support for rich text editor Wysihtml5.",
@@ -20,13 +26,20 @@ setup(
     maintainer_email = "inbox@danir.us",
     url = "http://pypi.python.org/pypi/django-inline-media/",
     classifiers = [
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Production/Stable',
         'Environment :: Web Environment',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
+        'Programming Language :: Python :: 3',
         'Framework :: Django',
+        'Natural Language :: English',
+        'Topic :: Internet :: WWW/HTTP :: Dynamic Content :: News/Diary',
     ],
     test_suite = "dummy",
+    include_package_data = True,
+    package_data = {
+        'inline_media': ['*.css', '*.js', '*.html']
+    }
 )
