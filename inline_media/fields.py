@@ -3,7 +3,12 @@
 import copy
 import six
 
-from django.db.models import fields, get_model
+from django.db.models import fields
+try:
+    from django.apps import apps
+    get_model = apps.get_model
+except:
+    from django.db.models.loading import get_model
 
 from inline_media.conf import settings
 from inline_media.widgets import TextareaWithInlines
